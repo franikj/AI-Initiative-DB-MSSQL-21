@@ -15,10 +15,7 @@ WITH QuarterlySales AS (
 
 SELECT 
     cur.ProductName,
-	cur.Revenue AS CurrentRevenue,
-	cur.Quantity AS CurrentQty,
-	prev.Revenue AS PreviousRevenue,
-	prev.Quantity AS PreviousQty,
+
   CASE 
     WHEN ISNULL(prev.Revenue, 0) = 0 THEN NULL
     ELSE (100.0 * (cur.Revenue - ISNULL(prev.Revenue, 0))) / prev.Revenue
