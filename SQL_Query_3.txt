@@ -1,0 +1,125 @@
+As a DB engineer I need to write a SQL query to retrieve sales revenue and quantity contributions by customers, calculated as a percentage of total sales revenue and quantity for each quarter and year:
+The query should return a data set which consists of following columns: [CustomerName], [TotalRevenuePercentage], [TotalQuantityPercentage], [Quarter], [Year].
+
+SELECT TOP (1000) [Order Key]
+      ,[City Key]
+      ,[Customer Key]
+      ,[Stock Item Key]
+      ,[Order Date Key]
+      ,[Picked Date Key]
+      ,[Salesperson Key]
+      ,[Picker Key]
+      ,[WWI Order ID]
+      ,[WWI Backorder ID]
+      ,[Description]
+      ,[Package]
+      ,[Quantity]
+      ,[Unit Price]
+      ,[Tax Rate]
+      ,[Total Excluding Tax]
+      ,[Tax Amount]
+      ,[Total Including Tax]
+      ,[Lineage Key]
+  FROM [Fact].[Order]
+
+SELECT TOP (1000) [Date]
+      ,[Day Number]
+      ,[Day]
+      ,[Month]
+      ,[Short Month]
+      ,[Calendar Month Number]
+      ,[Calendar Month Label]
+      ,[Calendar Year]
+      ,[Calendar Year Label]
+      ,[Fiscal Month Number]
+      ,[Fiscal Month Label]
+      ,[Fiscal Year]
+      ,[Fiscal Year Label]
+      ,[ISO Week Number]
+  FROM [Dimension].[Date]
+
+SELECT TOP (1000) [Customer Key]
+      ,[WWI Customer ID]
+      ,[Customer]
+      ,[Bill To Customer]
+      ,[Category]
+      ,[Buying Group]
+      ,[Primary Contact]
+      ,[Postal Code]
+      ,[Valid From]
+      ,[Valid To]
+      ,[Lineage Key]
+  FROM [Dimension].[Customer]
+
+
+ChatGPT
+To retrieve sales revenue and quantity contributions by customers, calculated as a percentage of total sales revenue and quantity for each quarter and year, you can follow the approach below:
+
+We need to join the three tables: [Fact].[Order], [Dimension].[Date], and [Dimension].[Customer].
+Aggregate sales by Customer, Quarter, and Year.
+Calculate the total sales revenue and quantity for each Quarter and Year.
+Calculate the percentage contribution of each Customer for sales revenue and quantity for each Quarter and Year.
+Here's the SQL query to achieve the described output:
+
+sql
+Copy code
+WITH TotalSales AS (
+    SELECT
+        DATEPART(QUARTER, d.[Date]) AS [Quarter],
+        d.[Calendar Year] AS [Year],
+        SUM(f.[Total Including Tax]) AS TotalRevenue,
+        SUM(f.[Quantity]) AS TotalQuantity
+    FROM [Fact].[Order] f
+    JOIN [Dimension].[Date] d ON f.[Order Date Key] = d.[Date]
+    GROUP BY DATEPART(QUARTER, d.[Date]), d.[Calendar Year]
+)
+
+, CustomerSales AS (
+    SELECT
+        c.[Customer],
+        DATEPART(QUARTER, d.[Date]) AS [Quarter],
+        d.[Calendar Year] AS [Year],
+        SUM(f.[Total Including Tax]) AS CustomerRevenue,
+        SUM(f.[Quantity]) AS CustomerQuantity
+    FROM [Fact].[Order] f
+    JOIN [Dimension].[Date] d ON f.[Order Date Key] = d.[Date]
+    JOIN [Dimension].[Customer] c ON f.[Customer Key] = c.[Customer Key]
+    GROUP BY c.[Customer], DATEPART(QUARTER, d.[Date]), d.[Calendar Year]
+)
+
+SELECT 
+    cs.[Customer] AS [CustomerName],
+    (cs.CustomerRevenue / ts.TotalRevenue) * 100 AS [TotalRevenuePercentage],
+    (cs.CustomerQuantity / ts.TotalQuantity) * 100 AS [TotalQuantityPercentage],
+    cs.[Quarter],
+    cs.[Year]
+FROM CustomerSales cs
+JOIN TotalSales ts ON cs.[Quarter] = ts.[Quarter] AND cs.[Year] = ts.[Year]
+ORDER BY cs.[Year], cs.[Quarter], [TotalRevenuePercentage] DESC;
+This query first calculates the total sales revenue and quantity for each quarter and year. It then calculates the sales revenue and quantity for each customer per quarter and year. Finally, it calculates the percentages by dividing each customer's sales by the total sales for that quarter and year. The results are sorted by year, quarter, and the percentage of revenue in descending order.
+
+
+
+
+User
+cs.CustomerQuantity / ts.TotalQuantity this two fileds have int type and i got zero result 
+ChatGPT
+I understand the issue you're encountering. When performing division with two integers in SQL, it will result in integer division, which can truncate the decimal part and give you a result of zero if the numerator is less than the denominator.
+
+To avoid this, you should cast one or both operands to a float or decimal data type before the division to get a floating point result.
+
+Here's the modified section of the query:
+
+sql
+Copy code
+...
+SELECT 
+    cs.[Customer] AS [CustomerName],
+    (CAST(cs.CustomerRevenue AS float) / CAST(ts.TotalRevenue AS float)) * 100 AS [TotalRevenuePercentage],
+    (CAST(cs.CustomerQuantity AS float) / CAST(ts.TotalQuantity AS float)) * 100 AS [TotalQuantityPercentage],
+    cs.[Quarter],
+    cs.[Year]
+FROM CustomerSales cs
+JOIN TotalSales ts ON cs.[Quarter] = ts.[Quarter] AND cs.[Year] = ts.[Year]
+ORDER BY cs.[Year], cs.[Quarter], [TotalRevenuePercentage] DESC;
+By casting to float before the division, the division operation will result in a floating-point number, which will give you the accurate percentage values.
