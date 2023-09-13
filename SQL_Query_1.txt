@@ -1,0 +1,216 @@
+As a DB engineer I need to write a SQL query to retrieve top 10 best-selling products by revenue, with their corresponding sales revenue and quantity, for each quarter and year:
+The query should return a data set which consists of following columns: [ProductName], [SalesQuantity], [SalesRevenue], [Quarter], [Year]
+
+Tables: 
+
+SELECT TOP (1000) [Stock Item Key]
+      ,[WWI Stock Item ID]
+      ,[Stock Item]
+      ,[Color]
+      ,[Selling Package]
+      ,[Buying Package]
+      ,[Brand]
+      ,[Size]
+      ,[Lead Time Days]
+      ,[Quantity Per Outer]
+      ,[Is Chiller Stock]
+      ,[Barcode]
+      ,[Tax Rate]
+      ,[Unit Price]
+      ,[Recommended Retail Price]
+      ,[Typical Weight Per Unit]
+      ,[Photo]
+      ,[Valid From]
+      ,[Valid To]
+      ,[Lineage Key]
+  FROM [Dimension].[Stock Item]
+
+SELECT TOP (1000) [Order Key]
+      ,[City Key]
+      ,[Customer Key]
+      ,[Stock Item Key]
+      ,[Order Date Key]
+      ,[Picked Date Key]
+      ,[Salesperson Key]
+      ,[Picker Key]
+      ,[WWI Order ID]
+      ,[WWI Backorder ID]
+      ,[Description]
+      ,[Package]
+      ,[Quantity]
+      ,[Unit Price]
+      ,[Tax Rate]
+      ,[Total Excluding Tax]
+      ,[Tax Amount]
+      ,[Total Including Tax]
+      ,[Lineage Key]
+  FROM [Fact].[Order]
+
+SELECT TOP (1000) [Date]
+      ,[Day Number]
+      ,[Day]
+      ,[Month]
+      ,[Short Month]
+      ,[Calendar Month Number]
+      ,[Calendar Month Label]
+      ,[Calendar Year]
+      ,[Calendar Year Label]
+      ,[Fiscal Month Number]
+      ,[Fiscal Month Label]
+      ,[Fiscal Year]
+      ,[Fiscal Year Label]
+      ,[ISO Week Number]
+  FROM [Dimension].[Date]
+
+
+ChatGPT
+Given the provided tables, you can determine the best-selling products by revenue using a combination of JOIN operations to combine the product, order, and date details.
+
+The revenue for a product can be calculated by multiplying the quantity sold (Quantity column from Fact.Order table) by the unit price (Unit Price column from Fact.Order table).
+
+To segregate the data by quarters, you can use the CASE statement.
+
+Here's a query that should work:
+
+sql
+Copy code
+WITH QuarterlySales AS (
+    SELECT 
+        si.[Stock Item] AS ProductName,
+        SUM(o.[Quantity]) AS SalesQuantity,
+        SUM(o.[Quantity] * o.[Unit Price]) AS SalesRevenue,
+        CASE 
+            WHEN d.[Calendar Month Number] IN (1,2,3) THEN 1
+            WHEN d.[Calendar Month Number] IN (4,5,6) THEN 2
+            WHEN d.[Calendar Month Number] IN (7,8,9) THEN 3
+            ELSE 4
+        END AS Quarter,
+        d.[Calendar Year] AS Year
+    FROM [Fact].[Order] o
+    JOIN [Dimension].[Stock Item] si ON o.[Stock Item Key] = si.[Stock Item Key]
+    JOIN [Dimension].[Date] d ON o.[Order Date Key] = d.[Day Number]
+    GROUP BY si.[Stock Item], 
+        CASE 
+            WHEN d.[Calendar Month Number] IN (1,2,3) THEN 1
+            WHEN d.[Calendar Month Number] IN (4,5,6) THEN 2
+            WHEN d.[Calendar Month Number] IN (7,8,9) THEN 3
+            ELSE 4
+        END,
+        d.[Calendar Year]
+)
+
+SELECT 
+    ProductName,
+    SalesQuantity,
+    SalesRevenue,
+    Quarter,
+    Year
+FROM (
+    SELECT 
+        ProductName, 
+        SalesQuantity, 
+        SalesRevenue, 
+        Quarter, 
+        Year,
+        ROW_NUMBER() OVER(PARTITION BY Quarter, Year ORDER BY SalesRevenue DESC) AS rn
+    FROM QuarterlySales
+) AS RankedSales
+WHERE rn <= 10
+ORDER BY Year, Quarter, rn;
+This query has a couple of parts:
+
+In the QuarterlySales CTE (Common Table Expression), we aggregate the sales data for each product by quarter and year.
+In the main query, we use ROW_NUMBER() to rank the products by their sales revenue within each quarter and year.
+Finally, the WHERE clause filters to only include the top 10 products by revenue for each quarter and year.
+
+
+
+User
+i've got this error 
+Msg 206, Level 16, State 2, Line 1
+Operand type clash: date is incompatible with int
+ChatGPT
+Ah, the error suggests that there's a type mismatch when trying to JOIN on the [Order Date Key] from the [Fact].[Order] table and the [Day Number] from the [Dimension].[Date] table. This usually means one of them is a date type while the other is an int.
+
+To resolve this, we need to first understand the nature of the columns [Order Date Key] and [Day Number]. If [Order Date Key] is an integer that represents the day (in a sequence or format like YYYYMMDD) and [Day Number] is similarly an integer, they can be directly joined.
+
+However, if [Order Date Key] is a date datatype, then we need to convert it to a format that matches the [Day Number].
+
+Let's assume [Order Date Key] is a date datatype and [Day Number] is an integer in the format YYYYMMDD. Here's how you'd adjust the query:
+
+Convert [Order Date Key] to an integer format YYYYMMDD during the JOIN.
+Here's the modified JOIN condition:
+
+sql
+Copy code
+JOIN [Dimension].[Date] d ON CONVERT(INT, CONVERT(VARCHAR, o.[Order Date Key], 112)) = d.[Day Number]
+Incorporate this into the earlier provided query, and the JOIN condition becomes:
+
+sql
+Copy code
+FROM [Fact].[Order] o
+JOIN [Dimension].[Stock Item] si ON o.[Stock Item Key] = si.[Stock Item Key]
+JOIN [Dimension].[Date] d ON CONVERT(INT, CONVERT(VARCHAR, o.[Order Date Key], 112)) = d.[Day Number]
+Use this adjusted JOIN condition and the rest of the query should work without this type mismatch error.
+
+
+
+
+User
+o.[Order Date Key]=d.Date you need to join by this fields, these two fields has type date 
+ChatGPT
+Understood. Let's modify the query accordingly. Given that both o.[Order Date Key] and d.Date are of date type, we can use a direct JOIN on these fields.
+
+Here's the adjusted SQL:
+
+sql
+Copy code
+WITH QuarterlySales AS (
+    SELECT 
+        si.[Stock Item] AS ProductName,
+        SUM(o.[Quantity]) AS SalesQuantity,
+        SUM(o.[Quantity] * o.[Unit Price]) AS SalesRevenue,
+        CASE 
+            WHEN d.[Calendar Month Number] IN (1,2,3) THEN 1
+            WHEN d.[Calendar Month Number] IN (4,5,6) THEN 2
+            WHEN d.[Calendar Month Number] IN (7,8,9) THEN 3
+            ELSE 4
+        END AS Quarter,
+        d.[Calendar Year] AS Year
+    FROM [Fact].[Order] o
+    JOIN [Dimension].[Stock Item] si ON o.[Stock Item Key] = si.[Stock Item Key]
+    JOIN [Dimension].[Date] d ON o.[Order Date Key] = d.[Date]
+    GROUP BY si.[Stock Item], 
+        CASE 
+            WHEN d.[Calendar Month Number] IN (1,2,3) THEN 1
+            WHEN d.[Calendar Month Number] IN (4,5,6) THEN 2
+            WHEN d.[Calendar Month Number] IN (7,8,9) THEN 3
+            ELSE 4
+        END,
+        d.[Calendar Year]
+)
+
+SELECT 
+    ProductName,
+    SalesQuantity,
+    SalesRevenue,
+    Quarter,
+    Year
+FROM (
+    SELECT 
+        ProductName, 
+        SalesQuantity, 
+        SalesRevenue, 
+        Quarter, 
+        Year,
+        ROW_NUMBER() OVER(PARTITION BY Quarter, Year ORDER BY SalesRevenue DESC) AS rn
+    FROM QuarterlySales
+) AS RankedSales
+WHERE rn <= 10
+ORDER BY Year, Quarter, rn;
+This corrected query joins the tables using the o.[Order Date Key] and d.Date columns directly, as per your guidance.
+
+
+
+
+
